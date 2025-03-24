@@ -15,18 +15,84 @@
 // и после окончания выполнения операции изменения порядка.
 
 
-#include <unistd.h>         //close()
-#include <sys/types.h>      //lseek() 
-#include <sys/mman.h>       //mmap()
-#include <fcntl.h>          //open()
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 
 
 
-int main()
-{
+// Функция для вывода содержимого памяти в шестнадцатеричном виде
+void print_hex(const unsigned char* data, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        printf("%02x ", data[i]);
+    }
+    printf("\n");
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Использование: %s <имя_файла>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    const char* filename = argv[1];
+    int fd;
+    struct stat file_info;
+    unsigned char* mapped_memory;
+    size_t file_size;
+
+    
+    fd = open(filename, O_RDWR); 
+    if (fd == -1) {
+        perror("Ошибка при открытии файла");
+        exit(EXIT_FAILURE);
+    }
+
+    
+    if (fstat(fd, &file_info) == -1) {
+        perror("Ошибка при получении информации о файле");
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+    file_size = file_info.st_size;
+
+    
+    mapped_memory = (unsigned char*)mmap(NULL, file_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (mapped_memory == MAP_FAILED) {
+        perror("Ошибка при отображении файла в память");
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Содержимое памяти до изменения:\n");
+    print_hex(mapped_memory, file_size);
+
+    
+    for (size_t i = 0; i < file_size - 1; i += 2) {
+        unsigned char temp = mapped_memory[i];
+        mapped_memory[i] = mapped_memory[i + 1];
+        mapped_memory[i + 1] = temp;
+    }
+
+    printf("Содержимое памяти после изменения:\n");
+    print_hex(mapped_memory, file_size);
+
     
 
+    if (munmap(mapped_memory, file_size) == -1) {
+        perror("Ошибка при отключении отображения файла из памяти");
+    }
 
+    
+    if (close(fd) == -1) {
+        perror("Ошибка при закрытии файла");
+        exit(EXIT_FAILURE);
+    }
 
+    return 0;
 }
